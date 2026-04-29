@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	tscore "github.com/frida/typescript-go/pkg/core"
-	"github.com/frida/typescript-go/pkg/tsoptions"
-	"github.com/frida/typescript-go/pkg/tspath"
+	tscore "github.com/jevinskie/typescript-go/pkg/core"
+	"github.com/jevinskie/typescript-go/pkg/tsoptions"
+	"github.com/jevinskie/typescript-go/pkg/tspath"
 )
 
 type TSConfigCache struct {

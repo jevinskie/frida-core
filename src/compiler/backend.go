@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
-	tsscanner "github.com/frida/typescript-go/pkg/scanner"
+	tsscanner "github.com/jevinskie/typescript-go/pkg/scanner"
 )
 
 type BuildOptions struct {
@@ -543,7 +543,7 @@ func makeTypeScriptPlugin(compiler *TSCompiler) esbuild.Plugin {
 				for _, d := range tsDiagnostics {
 					f := d.File()
 					pos := d.Pos()
-					line, column := tsscanner.GetLineAndCharacterOfPosition(f, pos)
+					line, column := tsscanner.GetECMALineAndByteOffsetOfPosition(f, pos)
 
 					esbuildMessages = append(esbuildMessages, esbuild.Message{
 						Text: d.Message(),

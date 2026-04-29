@@ -13,15 +13,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/frida/typescript-go/pkg/ast"
-	"github.com/frida/typescript-go/pkg/bundled"
-	"github.com/frida/typescript-go/pkg/compiler"
-	"github.com/frida/typescript-go/pkg/core"
-	"github.com/frida/typescript-go/pkg/tsoptions"
-	"github.com/frida/typescript-go/pkg/tspath"
-	"github.com/frida/typescript-go/pkg/vfs"
-	"github.com/frida/typescript-go/pkg/vfs/iovfs"
-	"github.com/frida/typescript-go/pkg/vfs/osvfs"
+	"github.com/jevinskie/typescript-go/pkg/ast"
+	"github.com/jevinskie/typescript-go/pkg/bundled"
+	"github.com/jevinskie/typescript-go/pkg/compiler"
+	"github.com/jevinskie/typescript-go/pkg/core"
+	"github.com/jevinskie/typescript-go/pkg/project"
+	"github.com/jevinskie/typescript-go/pkg/tsoptions"
+	"github.com/jevinskie/typescript-go/pkg/tspath"
+	"github.com/jevinskie/typescript-go/pkg/vfs"
+	"github.com/jevinskie/typescript-go/pkg/vfs/iovfs"
+	"github.com/jevinskie/typescript-go/pkg/vfs/osvfs"
 )
 
 //go:embed node_modules/@types/*/package.json
@@ -40,6 +41,7 @@ type TSCompiler struct {
 	options                   *core.CompilerOptions
 	program                   *compiler.Program
 	programErr                error
+	project                   *project.Project
 	forceFreshProgram         bool
 	mtimes                    map[tspath.Path]time.Time
 	inputDirs, inputFiles     []string
@@ -65,6 +67,7 @@ func (c *TSCompiler) resetProgramState() {
 	c.options = nil
 	c.program = nil
 	c.programErr = nil
+	c.project = nil
 	c.forceFreshProgram = false
 	c.mtimes = nil
 }
@@ -100,9 +103,7 @@ func (c *TSCompiler) createProgram(options *core.CompilerOptions) (*compiler.Pro
 	host := compiler.NewCompilerHost(options, c.projectRoot, c.fs, bundled.LibPath())
 
 	program := compiler.NewProgram(compiler.ProgramOptions{
-		RootFiles: []string{c.entrypoint},
-		Host:      host,
-		Options:   options,
+		Host: host,
 	})
 
 	c.updateMtimes(program)
@@ -121,7 +122,7 @@ func (c *TSCompiler) updateProgram(old *compiler.Program, options *core.Compiler
 	for path, mtime := range newMtimes {
 		if !mtime.Equal(c.mtimes[path]) {
 			var reused bool
-			newProg, reused = newProg.UpdateProgram(path)
+			newProg, reused = newProg.UpdateProgram(path, c.program.Host(), nil)
 			updated = append(updated, path)
 			if !reused {
 				c.updateMtimes(newProg)
@@ -230,19 +231,19 @@ func (c *TSCompiler) Compile(filePathToCompile string) (string, []*ast.Diagnosti
 
 	c.captureFs.ClearOutputs()
 
-	res := program.Emit(compiler.EmitOptions{
+	ctx := context.Background()
+
+	res := program.Emit(ctx, compiler.EmitOptions{
 		TargetSourceFile: targetSourceFile,
 	})
-
-	ctx := context.Background()
 
 	diagnostics := program.GetSyntacticDiagnostics(ctx, targetSourceFile)
 	if len(diagnostics) == 0 {
 		diagnostics = append(diagnostics, program.GetBindDiagnostics(ctx, targetSourceFile)...)
 	}
-	if len(diagnostics) == 0 {
-		diagnostics = append(diagnostics, program.GetOptionsDiagnostics(ctx)...)
-	}
+	// if len(diagnostics) == 0 {
+	// 	diagnostics = append(diagnostics, program.GetOptionsDiagnostics(ctx)...)
+	// }
 	if len(diagnostics) == 0 {
 		diagnostics = append(diagnostics, program.GetGlobalDiagnostics(ctx)...)
 	}
@@ -344,7 +345,7 @@ func (c *captureFS) GetOutputs() map[string]string {
 	return snap
 }
 
-func (c *captureFS) WriteFile(path string, data string, writeByteOrderMark bool) error {
+func (c *captureFS) WriteFile(path string, data string) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	c.outputs[path] = data
