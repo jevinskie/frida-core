@@ -546,7 +546,7 @@ func makeTypeScriptPlugin(compiler *TSCompiler) esbuild.Plugin {
 					line, column := tsscanner.GetECMALineAndByteOffsetOfPosition(f, pos)
 
 					esbuildMessages = append(esbuildMessages, esbuild.Message{
-						Text: d.Message(),
+						Text: d.String(),
 						Location: &esbuild.Location{
 							File:     f.FileName(),
 							Line:     line,

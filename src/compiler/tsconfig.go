@@ -92,7 +92,7 @@ func (c *TSConfigCache) GetCompilerOptions(
 	if len(parsedCommandLine.Errors) > 0 {
 		var msgs []string
 		for _, diag := range parsedCommandLine.Errors {
-			msgs = append(msgs, diag.Message())
+			msgs = append(msgs, diag.String())
 		}
 		return nil, "", fmt.Errorf(
 			"Failed to parse %s: %s",
