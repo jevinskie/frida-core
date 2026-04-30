@@ -84,8 +84,8 @@ func (c *TSConfigCache) GetCompilerOptions(
 		parsedSource,
 		host,
 		c.projectRoot,
-		nil,
-		c.tsconfigPath,
+		nil, nil,
+		tspath.GetNormalizedAbsolutePath(c.tsconfigPath, c.projectRoot),
 		nil, nil, nil,
 	)
 

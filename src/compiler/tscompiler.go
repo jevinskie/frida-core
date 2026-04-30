@@ -17,7 +17,6 @@ import (
 	"github.com/jevinskie/typescript-go/pkg/bundled"
 	"github.com/jevinskie/typescript-go/pkg/compiler"
 	"github.com/jevinskie/typescript-go/pkg/core"
-	"github.com/jevinskie/typescript-go/pkg/project"
 	"github.com/jevinskie/typescript-go/pkg/tsoptions"
 	"github.com/jevinskie/typescript-go/pkg/tspath"
 	"github.com/jevinskie/typescript-go/pkg/vfs"
@@ -41,7 +40,6 @@ type TSCompiler struct {
 	options                   *core.CompilerOptions
 	program                   *compiler.Program
 	programErr                error
-	project                   *project.Project
 	forceFreshProgram         bool
 	mtimes                    map[tspath.Path]time.Time
 	inputDirs, inputFiles     []string
@@ -67,7 +65,6 @@ func (c *TSCompiler) resetProgramState() {
 	c.options = nil
 	c.program = nil
 	c.programErr = nil
-	c.project = nil
 	c.forceFreshProgram = false
 	c.mtimes = nil
 }
@@ -100,7 +97,7 @@ func (c *TSCompiler) EnsureProgramUpToDate() error {
 }
 
 func (c *TSCompiler) createProgram(options *core.CompilerOptions) (*compiler.Program, error) {
-	host := compiler.NewCompilerHost(options, c.projectRoot, c.fs, bundled.LibPath())
+	host := compiler.NewCompilerHost(options.RootDir, c.fs, bundled.LibPath(), nil, nil)
 
 	program := compiler.NewProgram(compiler.ProgramOptions{
 		Host: host,
@@ -238,28 +235,19 @@ func (c *TSCompiler) Compile(filePathToCompile string) (string, []*ast.Diagnosti
 	})
 
 	diagnostics := program.GetSyntacticDiagnostics(ctx, targetSourceFile)
-	if len(diagnostics) == 0 {
-		diagnostics = append(diagnostics, program.GetBindDiagnostics(ctx, targetSourceFile)...)
-	}
-	// if len(diagnostics) == 0 {
-	// 	diagnostics = append(diagnostics, program.GetOptionsDiagnostics(ctx)...)
-	// }
-	if len(diagnostics) == 0 {
-		diagnostics = append(diagnostics, program.GetGlobalDiagnostics(ctx)...)
-	}
-	if len(diagnostics) == 0 {
-		semanticDiags := program.GetSemanticDiagnostics(ctx, targetSourceFile)
-		for _, d := range semanticDiags {
-			switch d.Code() {
-			case
-				2305, // Module '{0}' has no exported member '{1}'.
-				2306, // File '{0}' is not a module.
-				2307: // Cannot find module '{0}' or its corresponding type declarations.
-				c.forceFreshProgram = true
-			}
+	diagnostics = append(diagnostics, program.GetBindDiagnostics(ctx, targetSourceFile)...)
+	diagnostics = append(diagnostics, program.GetGlobalDiagnostics(ctx)...)
+	semanticDiags := program.GetSemanticDiagnostics(ctx, targetSourceFile)
+	for _, d := range semanticDiags {
+		switch d.Code() {
+		case
+			2305, // Module '{0}' has no exported member '{1}'.
+			2306, // File '{0}' is not a module.
+			2307: // Cannot find module '{0}' or its corresponding type declarations.
+			c.forceFreshProgram = true
 		}
-		diagnostics = append(diagnostics, semanticDiags...)
 	}
+	diagnostics = append(diagnostics, semanticDiags...)
 
 	if res.EmitSkipped {
 		errMsg := "TypeScript compilation failed and was skipped"
