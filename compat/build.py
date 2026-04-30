@@ -45,6 +45,8 @@ def main(argv):
     command.add_argument("components", help="which components will be built",
                          type=parse_array_option_value)
     command.add_argument("glib_flavor", help="upstream or frida", choices=["upstream", "frida"])
+    command.add_argument("apple_tls", help="whether the parent build is using the Apple TLS backend",
+                         choices=["enabled", "disabled"])
     command.add_argument("compilers", help="compiler command arrays", nargs="+")
     command.set_defaults(func=lambda args: setup(args.role,
                                                  args.builddir,
@@ -58,6 +60,7 @@ def main(argv):
                                                  args.assets,
                                                  args.components,
                                                  args.glib_flavor,
+                                                 args.apple_tls,
                                                  parse_compilers(args.compilers)))
 
     command = subparsers.add_parser("compile", help="compile compatibility assets")
@@ -125,6 +128,7 @@ def setup(role: Role,
           assets: str,
           components: set[str],
           glib_flavor: str,
+          apple_tls: str,
           compilers: Compilers):
     try:
         outputs: Mapping[str, Sequence[Output]] = OrderedDict()
@@ -373,6 +377,17 @@ def setup(role: Role,
                            file=gadget_file,
                            target=GADGET_TARGET),
                 ]
+        elif apple_tls == "enabled" and "agent" in components:
+            kind = "modern" if arch_is_modern(host_os, host_arch) else "legacy"
+            _, agent_file, _ = native_file_paths(host_os)
+            group = OutputGroup(host_arch)
+            outputs.setdefault(group, [])
+            outputs[group] += [
+                Output(identifier=f"agent_{kind}",
+                       name=arch_suffixed_name(agent_file.name, host_arch),
+                       file=agent_file,
+                       target=AGENT_TARGET),
+            ]
 
         outputs = OrderedDict((g, items) for g, items in outputs.items() if items)
 
@@ -382,7 +397,7 @@ def setup(role: Role,
         else:
             allowed_prebuilds = None
 
-        state = State(role, builddir, top_builddir, frida_version, host_os, host_os_family, host_config, glib_flavor, allowed_prebuilds, outputs)
+        state = State(role, builddir, top_builddir, frida_version, host_os, host_os_family, host_config, glib_flavor, apple_tls, allowed_prebuilds, outputs)
         serialized_state = base64.b64encode(pickle.dumps(state)).decode('ascii')
 
         if missing:
@@ -421,6 +436,7 @@ class State:
     host_os_family: str
     host_config: Optional[str]
     glib_flavor: str
+    apple_tls: str
     allowed_prebuilds: Optional[set[str]]
     outputs: Mapping[OutputGroup, Sequence[Output]]
 
@@ -510,6 +526,8 @@ def compile(privdir: Path, state: State):
                 forwarded_options += ["-Ddefault_library=static"]
             else:
                 forwarded_options = [o for o in options if not is_overridden_compat_option(o)]
+            if state.apple_tls == "enabled":
+                forwarded_options += ["-Dapple_tls=disabled"]
 
             configure(sourcedir=REPO_ROOT,
                       builddir=workdir,

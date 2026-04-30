@@ -44,61 +44,84 @@ if host_os_family in ['linux', 'qnx']
   extra_link_args += '-Wl,-Bsymbolic'
 endif
 
-raw_agent = shared_library('frida-agent-raw', agent_sources,
-  name_prefix: 'lib',
-  c_args: frida_component_cflags,
-  vala_header: 'frida-agent.h',
-  vala_args: [base_vala_args, payload_vala_args, extra_vala_args],
-  link_args: extra_link_args,
-  link_depends: extra_link_depends,
-  vs_module_defs: 'frida-agent.def',
-  override_options: ['b_asneeded=true'],
-  dependencies: [gio_dep, gee_dep, gum_dep, gumjs_dep, base_dep, pipe_dep, tls_provider_dep, payload_dep],
-)
-
-operations = ['--move', 'constructor', 'frida_libc_shim_init', 'first']
-if host_os_family != 'darwin'
-  operations += ['--move', 'destructor', 'frida_libc_shim_deinit', 'first']
-endif
-modulated_agent = custom_target('frida-agent-modulated',
-  input: raw_agent,
-  output: 'libfrida-agent-modulated' + shlib_suffix,
-  command: modulate + operations,
-)
-
 need_universal_agent = host_os_family == 'darwin' \
     and assets_mode == 'installed' \
     and agent_compat != ''
 
-if host_os_family == 'darwin'
-  identity = 'FridaAgent'
-else
-  identity = agent_name
-endif
-agent = custom_target('frida-agent',
-  input: modulated_agent,
-  output: need_universal_agent ? f'@agent_name@-@host_abi@' : agent_name,
-  command: post_process + ['shared-library', identity],
-  build_by_default: true,
-  install: assets_mode == 'installed' and not need_universal_agent,
-  install_dir: asset_dir,
-)
+# When compat provides the host-arch agent (e.g. when use_apple_tls is on, so
+# the agent has to be built separately to avoid pulling in Apple frameworks),
+# skip building it here.
+build_agent = agent_host_compat == ''
 
-agent_dep = declare_dependency(link_with: agent)
+if build_agent
+  raw_agent = shared_library('frida-agent-raw', agent_sources,
+    name_prefix: 'lib',
+    c_args: frida_component_cflags,
+    vala_header: 'frida-agent.h',
+    vala_args: [base_vala_args, payload_vala_args, extra_vala_args],
+    link_args: extra_link_args,
+    link_depends: extra_link_depends,
+    vs_module_defs: 'frida-agent.def',
+    override_options: ['b_asneeded=true'],
+    dependencies: [gio_dep, gee_dep, gum_dep, gumjs_dep, base_dep, pipe_dep, tls_provider_dep, payload_dep],
+  )
 
-if need_universal_agent
-  custom_target('frida-agent-universal',
-    input: agent,
-    output: agent_name,
-    command: [
-      lipo,
-      '@INPUT@',
-      agent_compat,
-      '-create',
-      '-output', meson.current_build_dir() / agent_name,
-    ],
-    depends: agent_depends,
-    install: true,
+  operations = ['--move', 'constructor', 'frida_libc_shim_init', 'first']
+  if host_os_family != 'darwin'
+    operations += ['--move', 'destructor', 'frida_libc_shim_deinit', 'first']
+  endif
+  modulated_agent = custom_target('frida-agent-modulated',
+    input: raw_agent,
+    output: 'libfrida-agent-modulated' + shlib_suffix,
+    command: modulate + operations,
+  )
+
+  if host_os_family == 'darwin'
+    identity = 'FridaAgent'
+  else
+    identity = agent_name
+  endif
+  agent = custom_target('frida-agent',
+    input: modulated_agent,
+    output: need_universal_agent ? f'@agent_name@-@host_abi@' : agent_name,
+    command: post_process + ['shared-library', identity],
+    build_by_default: true,
+    install: assets_mode == 'installed' and not need_universal_agent,
     install_dir: asset_dir,
   )
+
+  agent_dep = declare_dependency(link_with: agent)
+endif
+
+if need_universal_agent
+  if build_agent
+    custom_target('frida-agent-universal',
+      input: agent,
+      output: agent_name,
+      command: [
+        lipo,
+        '@INPUT@',
+        agent_compat,
+        '-create',
+        '-output', meson.current_build_dir() / agent_name,
+      ],
+      depends: agent_depends,
+      install: true,
+      install_dir: asset_dir,
+    )
+  else
+    custom_target('frida-agent-universal',
+      output: agent_name,
+      command: [
+        lipo,
+        agent_host_compat,
+        agent_compat,
+        '-create',
+        '-output', meson.current_build_dir() / agent_name,
+      ],
+      depends: agent_depends,
+      install: true,
+      install_dir: asset_dir,
+    )
+  endif
 endif

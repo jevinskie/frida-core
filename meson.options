@@ -143,6 +143,12 @@ option('connectivity',
   description: 'Internet connectivity features (TLS and ICE support)'
 )
 
+option('apple_tls',
+  type: 'feature',
+  value: 'auto',
+  description: 'Use the Apple TLS backend (requires recent deployment targets); auto-detected when on a Darwin host'
+)
+
 option('mapper',
   type: 'feature',
   value: 'auto',

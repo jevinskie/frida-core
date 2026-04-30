@@ -767,11 +767,12 @@ else
 endif
 
 tls_provider_vala_args = []
+use_apple_tls = false
 if have_shared_glib
   tls_provider_dep = gio_dep
 else
-  use_apple_tls = false
-  if host_os_family == 'darwin'
+  apple_tls_opt = get_option('apple_tls')
+  if host_os_family == 'darwin' and not apple_tls_opt.disabled()
     apple_tls_deployment_check = '''
 #include <Availability.h>
 
@@ -789,6 +790,11 @@ else
 #endif
 '''
     use_apple_tls = cc.compiles(apple_tls_deployment_check, name: 'Apple TLS backend deployment target')
+    if apple_tls_opt.enabled() and not use_apple_tls
+      error('apple_tls explicitly enabled but deployment target is too old')
+    endif
+  elif apple_tls_opt.enabled()
+    error('apple_tls is only supported on Darwin hosts')
   endif
   if use_apple_tls
     tls_provider_name = 'gioapple'
