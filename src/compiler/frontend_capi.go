@@ -1,4 +1,4 @@
-//go:build !frida_compiler_backend_executable
+//go:build !frida_compiler_backend_executable && !frida_compiler_backend_cli
 
 package main
 
